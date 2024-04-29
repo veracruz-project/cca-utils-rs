@@ -1,0 +1,23 @@
+[package]
+authors = ["Mathias Brossard <mathias.brossard@arm.com>"]
+name = "cca-test-initrd"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.20.0"
+cbor-diag = "0.1.11"
+env_logger = "0.10.0"
+libc = "0.2.124"
+log = "0.4.13"
+nix = "0.20.2"
+tsm_report = { path = "../tsm_report", optional = true }
+
+[features]
+default = []
+tsm = [ "tsm_report" ]

@@ -1,0 +1,11 @@
+[package]
+authors = ["Mathias Brossard <mathias.brossard@arm.com>"]
+name = "tsm_report"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4.13"
+strum = { version = "0.25", features = ["derive"] }
+tempfile = "3.2"
+thiserror = "1.0"
