@@ -6,7 +6,8 @@ build: initrd.cpio
 
 # STRIP = aarch64-linux-musl-strip
 # STRIP = aarch64-none-elf-strip
-STRIP = aarch64-elf-strip
+# STRIP = aarch64-elf-strip
+STRIP = aarch64-linux-gnu-strip
 
 initrd.cpio: init
 	rm -rf initrd initrd.cpio
@@ -25,3 +26,7 @@ init:
 clean:
 	rm -rf initrd.cpio
 	cargo clean
+
+docker:
+	docker build -t cca-test-initrd:latest .
+	docker run -it -v $$PWD/..:/src -u $(shell id -u):$(shell id -g) cca-test-initrd:latest make -C cca-test-initrd
