@@ -9,6 +9,8 @@ build: initrd.cpio
 # STRIP = aarch64-elf-strip
 STRIP = aarch64-linux-gnu-strip
 
+FEATURES ?= tsm,verbose
+
 initrd.cpio: init
 	rm -rf initrd initrd.cpio
 	mkdir initrd
@@ -20,7 +22,7 @@ initrd.cpio: init
 .PHONY: init
 init:
 	rustup target add aarch64-unknown-linux-musl
-	cargo build --release --features tsm --target aarch64-unknown-linux-musl
+	cargo build --release --features $(FEATURES) --target aarch64-unknown-linux-musl
 
 .PHONY: clean
 clean:

@@ -2,82 +2,15 @@
 extern crate log;
 
 #[cfg(not(feature="tsm_report"))]
-use anyhow::anyhow;
+mod naive;
+
 use anyhow::{Error, Result};
-#[cfg(not(feature="tsm_report"))]
-use nix::fcntl::{open, OFlag};
+use base64::prelude::*;
 use nix::mount::{mount, MsFlags}; // MntFlags
 use nix::sys::stat::Mode;
 use nix::unistd::{mkdir};
-#[cfg(not(feature="tsm_report"))]
-use nix::unistd::{close, read, write};
-
-#[cfg(not(feature="tsm_report"))]
-fn attestation(challenge: &[u8], _challenge_id: i32) -> Result<Vec<u8>, Error>{
-    let chmod_0755: Mode = Mode::S_IRWXU | Mode::S_IRGRP | Mode::S_IXGRP |
-        Mode::S_IROTH | Mode::S_IXOTH;
-    let report = "/sys/kernel/config/tsm/report/report0";
-    let inblob = format!("{report}/inblob");
-    let outblob = format!("{report}/outblob");
-
-    mkdir(report, chmod_0755).ok();
-    info!("cca_test::attestation Created {}", report);
-
-    let s = nix::sys::stat::stat(inblob.as_str());
-    info!("cca_test::attestation {} {:?}", inblob, s);
-
-    let mut c = challenge.clone();
-    match open(inblob.as_str(), OFlag::O_WRONLY, Mode::empty()) {
-            Ok(f) => {
-            while c.len() > 0 {
-                match write(f, challenge) {
-                    Ok(l) => {
-                        (_, c) = c.split_at(l);
-                    },
-                    Err(err) => {
-                        error!("cca_test::attestation writing to inblob! {}", err);
-                        return Err(anyhow!(err));
-                    },
-                }
-            }
-            close(f)?;
-        },
-        Err(err) => {
-            error!("cca_test::attestation opening inblob failed! {}", err);
-            return Err(anyhow!(err));
-        }
-    }
-
-    match open(outblob.as_str(), OFlag::empty(), Mode::empty()) {
-        Ok(f) => {
-            let mut blob = vec![];
-            loop {
-                let mut buf = [0u8; 256];
-                match read(f, &mut buf) {
-                    Ok(l) => {
-                        if l == 0 {
-                            break;
-                        } else {
-                            blob.extend(buf.split_at(l).0);
-                        }
-                    },
-                    Err(err) => {
-                        error!("cca_test::attestation from outblob! {}", err);
-                        return Err(anyhow!(err));
-                    },
-                }
-            }
-            info!("cca_test::attestation token is {} bytes long", blob.len());
-            let base64 = base64::encode(&blob[0..(blob.len() as usize)]);
-            info!("cca_test::attestation token = {:x?}", base64);
-            return Ok(blob);
-        },
-        Err(err) => {
-            error!("cca_test::attestation opening outblob failed! {}", err);
-            return Err(anyhow!(err));
-        }
-    }
-}
+#[cfg(feature="verify")]
+use ccatoken::{store::MemoTrustAnchorStore, token};
 
 fn main() -> Result<()> {
     std::env::set_var("RUST_BACKTRACE", "full");
@@ -116,7 +49,7 @@ fn main() -> Result<()> {
     let challenge = [0u8; 64];
 
     #[cfg(not(feature="tsm_report"))]
-    let token = attestation(&challenge, 0).unwrap();
+    let token = naive::attestation(&challenge, 0).unwrap();
 
     #[cfg(feature="tsm_report")]
     let token = {
@@ -124,6 +57,54 @@ fn main() -> Result<()> {
         r.attestation_report(tsm_report::TsmReportData::Cca(challenge.to_vec())).unwrap()
     };
 
+    info!("cca_test::attestation token is {} bytes long", token.len());
+    let base64 = BASE64_STANDARD.encode(&token[0..(token.len() as usize)]);
+    info!("cca_test::attestation token = {:x?}", base64);
+
+    #[cfg(feature="verify")]
+    {
+        let ta_store: &str = r#"[
+    {
+        "pkey": {
+            "crv": "P-384",
+            "kty": "EC",
+            "x": "IShnxS4rlQiwpCCpBWDzlNLfqiG911FP8akBr-fh94uxHU5m-Kijivp2r2oxxN6M",
+            "y": "hM4tr8mWQli1P61xh3T0ViDREbF26DGOEYfbAjWjGNN7pZf-6A4OTHYqEryz6m7U"
+        },
+        "implementation-id": "7f454c4602010100000000000000000003003e00010000005058000000000000",
+        "instance-id": "0107060504030201000f0e0d0c0b0a090817161514131211101f1e1d1c1b1a1918"
+    }
+]"#;
+
+        let mut tas: MemoTrustAnchorStore = Default::default();
+        match tas.load_json(&ta_store) {
+            Ok(_) => {},
+            Err(e) => {
+                error!("Loading trust anchors: {}", e);
+            }
+        }
+        let mut e: token::Evidence = token::Evidence::decode(&token).unwrap();
+        match e.verify(&tas) {
+            Ok(_) => {
+                info!("Token verification succeeded");
+            },
+            Err(e) => {
+                error!("Token verification failed: {}", e);
+            }
+        }
+        let (platform_tvec, realm_tvec) = e.get_trust_vectors();
+
+        info!(
+            "platform trust vector: {}",
+            serde_json::to_string_pretty(&platform_tvec).unwrap()
+        );
+        info!(
+            "realm trust vector: {}",
+            serde_json::to_string_pretty(&realm_tvec).unwrap()
+        );
+    }
+
+    #[cfg(feature="verbose")]
     if token.len() > 0 {
         let mut di = cbor_diag::parse_bytes(token).unwrap();
 

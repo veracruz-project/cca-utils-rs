@@ -10,14 +10,18 @@ lto = true
 
 [dependencies]
 anyhow = "1.0"
-base64 = "0.20.0"
+base64 = "0.22.0"
 cbor-diag = "0.1.11"
 env_logger = "0.10.0"
 libc = "0.2.124"
 log = "0.4.13"
-nix = "0.20.2"
+nix = "0.22.2"
 tsm_report = { path = "../tsm_report", optional = true }
+ccatoken = { git = "https://github.com/veraison/rust-ccatoken.git", optional = true }
+serde_json = { version = "1.0", features = ["raw_value"], optional = true }
 
 [features]
 default = []
 tsm = [ "tsm_report" ]
+verify = [ "ccatoken", "serde_json" ]
+verbose = []
